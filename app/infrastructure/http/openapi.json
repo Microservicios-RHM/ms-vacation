@@ -1,0 +1,281 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Microservicio de vacaciones",
+    "version": "1.0.0",
+    "description": "API para programar, consultar y cancelar períodos de vacaciones. Publica vacaciones.programadas al programar exitosamente un período."
+  },
+  "servers": [{ "url": "/", "description": "Servidor actual" }],
+  "tags": [
+    { "name": "Health", "description": "Estado operativo del microservicio" },
+    { "name": "Vacaciones", "description": "Gestión de períodos de vacaciones" }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Consultar el estado del servicio",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "El proceso está activo.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" },
+                "example": { "success": true, "message": "Servicio disponible", "data": { "status": "UP" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vacaciones": {
+      "get": {
+        "tags": ["Vacaciones"],
+        "summary": "Listar períodos de vacaciones",
+        "description": "Sin filtros, lista todos los períodos. `empleadoId` filtra por empleado.",
+        "operationId": "listVacations",
+        "parameters": [
+          { "name": "empleadoId", "in": "query", "required": false, "schema": { "type": "string" }, "example": "E001" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Períodos consultados correctamente.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VacationListResponse" } } }
+          },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      },
+      "post": {
+        "tags": ["Vacaciones"],
+        "summary": "Programar un período de vacaciones",
+        "description": "Publica vacaciones.programadas tras persistir exitosamente. Validaciones, en orden: fechas incoherentes, fechas en el pasado, solapamiento con un período PROGRAMADA/EN_CURSO existente, empleado inexistente (o retirado).",
+        "operationId": "scheduleVacation",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ScheduleVacationRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Período programado correctamente.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VacationResponse" } } }
+          },
+          "400": {
+            "description": "Datos inválidos, fechas incoherentes/pasadas, solapamiento, o empleado inexistente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    { "$ref": "#/components/schemas/ErrorResponse" },
+                    { "$ref": "#/components/schemas/ValidationErrorResponse" },
+                    { "$ref": "#/components/schemas/OverlapErrorResponse" }
+                  ]
+                }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    },
+    "/vacaciones/{id}": {
+      "get": {
+        "tags": ["Vacaciones"],
+        "summary": "Consultar un período por identificador",
+        "operationId": "getVacation",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "example": "V-2026-0042" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Período encontrado.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VacationResponse" } } }
+          },
+          "404": {
+            "description": "El período solicitado no existe.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      },
+      "delete": {
+        "tags": ["Vacaciones"],
+        "summary": "Cancelar un período que aún no ha iniciado",
+        "operationId": "cancelVacation",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" }, "example": "V-2026-0042" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Período cancelado correctamente.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VacationResponse" } } }
+          },
+          "400": {
+            "description": "El período ya inició (o no está PROGRAMADA) y no puede cancelarse.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "404": {
+            "description": "El período solicitado no existe.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+          },
+          "500": { "$ref": "#/components/responses/InternalServerError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Health": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status"],
+        "properties": { "status": { "type": "string", "enum": ["UP"] } }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "const": true },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/Health" }
+        }
+      },
+      "VacationPeriod": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "empleadoId", "fechaInicio", "fechaFin", "estado", "fechaCreacion"],
+        "properties": {
+          "id": { "type": "string", "example": "V-2026-0042" },
+          "empleadoId": { "type": "string", "example": "E001" },
+          "fechaInicio": { "type": "string", "format": "date", "example": "2026-03-15" },
+          "fechaFin": { "type": "string", "format": "date", "example": "2026-03-30" },
+          "estado": { "type": "string", "enum": ["PROGRAMADA", "EN_CURSO", "FINALIZADA", "CANCELADA"] },
+          "fechaCreacion": { "type": "string", "format": "date-time" }
+        }
+      },
+      "VacationResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "const": true },
+          "message": { "type": "string" },
+          "data": { "$ref": "#/components/schemas/VacationPeriod" }
+        }
+      },
+      "VacationListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["success", "message", "data"],
+        "properties": {
+          "success": { "type": "boolean", "const": true },
+          "message": { "type": "string" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/VacationPeriod" } }
+        }
+      },
+      "ScheduleVacationRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["empleadoId", "fechaInicio", "fechaFin"],
+        "properties": {
+          "empleadoId": { "type": "string", "example": "E001" },
+          "fechaInicio": { "type": "string", "format": "date", "example": "2026-06-15" },
+          "fechaFin": { "type": "string", "format": "date", "example": "2026-06-30" }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["success", "message", "data", "error"],
+        "properties": {
+          "success": { "type": "boolean", "const": false },
+          "message": { "type": "string" },
+          "data": { "type": "null" },
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "status", "path", "timestamp"],
+            "properties": {
+              "code": { "type": "string" },
+              "status": { "type": "integer" },
+              "path": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
+      },
+      "ValidationErrorResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["success", "message", "data", "error"],
+        "properties": {
+          "success": { "type": "boolean", "const": false },
+          "message": { "type": "string", "example": "Datos de entrada inválidos" },
+          "data": { "type": "null" },
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "status", "path", "timestamp", "details"],
+            "properties": {
+              "code": { "type": "string", "enum": ["VALIDATION_ERROR"] },
+              "status": { "type": "integer", "example": 400 },
+              "path": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["field", "message"],
+                  "properties": {
+                    "field": { "type": "string" },
+                    "message": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "OverlapErrorResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["success", "message", "data", "error"],
+        "properties": {
+          "success": { "type": "boolean", "const": false },
+          "message": { "type": "string" },
+          "data": { "type": "null" },
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "status", "path", "timestamp", "conflictingPeriod"],
+            "properties": {
+              "code": { "type": "string", "enum": ["VACATION_OVERLAP"] },
+              "status": { "type": "integer", "example": 400 },
+              "path": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "conflictingPeriod": { "$ref": "#/components/schemas/VacationPeriod" }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "InternalServerError": {
+        "description": "Error no controlado en el servidor.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+            "example": {
+              "success": false,
+              "message": "Error interno del servidor",
+              "data": null,
+              "error": { "code": "INTERNAL_ERROR", "status": 500, "path": "/vacaciones", "timestamp": "2026-02-10T12:00:00.000Z" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
