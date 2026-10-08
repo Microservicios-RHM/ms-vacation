@@ -21,4 +21,19 @@ RSpec.describe Application::ListVacations do
   it 'filtra por empleadoId cuando se provee' do
     expect(use_case.execute(empleado_id: 'E001').map(&:id)).to contain_exactly('V-2026-0001')
   end
+
+  it 'filtra por estado cuando se provee' do
+    vacation_repository.find_by_id('V-2026-0001').estado = 'CANCELADA'
+
+    expect(use_case.execute(estado: 'CANCELADA').map(&:id)).to contain_exactly('V-2026-0001')
+  end
+
+  it 'combina empleadoId y estado' do
+    expect(use_case.execute(empleado_id: 'E002', estado: 'PROGRAMADA').map(&:id))
+      .to contain_exactly('V-2026-0002')
+  end
+
+  it 'rechaza un estado que no existe' do
+    expect { use_case.execute(estado: 'INVENTADO') }.to raise_error(Domain::AppError)
+  end
 end

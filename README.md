@@ -25,6 +25,16 @@ repositorio [rhm-database-infrastructure](https://github.com/Microservicios-RHM/
 Con este servicio completo, el Reto 4 queda terminado: los 4 eventos del catálogo tienen productor
 y los consumidores correspondientes, y los 5 servicios están detrás del Gateway.
 
+Añadido en el **Reto 5**:
+
+- ✅ **Scheduler**: pasa los períodos a `EN_CURSO` y a `FINALIZADA` al llegar sus fechas, y publica
+  `vacaciones.iniciadas` y `vacaciones.finalizadas`.
+- ✅ `GET /vacaciones?estado=` para filtrar por estado, combinable con `empleadoId`.
+- ✅ Al consumir `empleado.retirado`, cancela los períodos del empleado que aún no habían iniciado.
+- ✅ `POST /vacaciones/{id}/forzar-inicio` y `forzar-fin`, endpoints de desarrollo para demostrar
+  el ciclo sin esperar al cambio de día.
+- ✅ OpenAPI con el esquema de seguridad `BearerAuth`.
+
 ## Decisión técnica: validación de existencia del empleado
 
 El enunciado pide justificar explícitamente esta decisión. Dos opciones:
@@ -96,7 +106,14 @@ DB_PASSWORD=change_vacations_password
 BROKER_URL=amqp://admin:admin@message-broker:5672
 BROKER_EXCHANGE=rhm.events
 BROKER_QUEUE=vacaciones.queue
+
+SCHEDULER_ENABLED=true
+SCHEDULER_INTERVAL_SECONDS=60
 ```
+
+Las dos últimas gobiernan el scheduler del Reto 5. El intervalo es de un minuto en desarrollo para
+poder observar las transiciones sin esperar; apagarlo con `SCHEDULER_ENABLED=false` deja el
+servicio funcionando pero sin que ningún período cambie de estado por sí solo.
 
 La aplicación valida la configuración al arrancar (`app/infrastructure/config.rb`) y falla
 inmediatamente si falta una variable requerida (`DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`,
@@ -113,9 +130,14 @@ curl -i -X POST http://localhost:8080/vacaciones \
 
 curl -i http://localhost:8080/vacaciones/V-2026-0042
 curl -i "http://localhost:8080/vacaciones?empleadoId=E001"
+curl -i "http://localhost:8080/vacaciones?estado=PROGRAMADA"
+curl -i "http://localhost:8080/vacaciones?empleadoId=E001&estado=CANCELADA"
 curl -i http://localhost:8080/vacaciones
 curl -i -X DELETE http://localhost:8080/vacaciones/V-2026-0042
 ```
+
+Desde el Reto 5 todas estas peticiones requieren `Authorization: Bearer <token>`. Las de escritura
+exigen además rol `ADMIN`; las de lectura las puede hacer cualquier usuario autenticado.
 
 Respuestas de error relevantes:
 
@@ -137,6 +159,89 @@ reescritura de ruta:
 Swagger UI:     http://localhost:8080/vacaciones/docs
 OpenAPI JSON:   http://localhost:8080/vacaciones/openapi.json
 ```
+
+## Scheduler (Reto 5)
+
+Hasta el Reto 4 este servicio quedaba a medias: registraba períodos y publicaba
+`vacaciones.programadas`, pero nada ocurría cuando llegaba la fecha de inicio. La cuenta del
+empleado nunca se desactivaba porque nada observaba el paso del tiempo.
+
+Una tarea periódica hace ahora dos cosas:
+
+1. Los períodos `PROGRAMADA` cuya `fechaInicio` ya llegó pasan a `EN_CURSO` → publica
+   `vacaciones.iniciadas`.
+2. Los períodos `EN_CURSO` cuya `fechaFin` ya pasó pasan a `FINALIZADA` → publica
+   `vacaciones.finalizadas`.
+
+| Aspecto | Valor |
+|---|---|
+| Mecanismo | Hilo de Ruby con intervalo (`app/infrastructure/scheduler.rb`) |
+| Frecuencia | `SCHEDULER_INTERVAL_SECONDS`, 60 segundos por defecto |
+| Interruptor | `SCHEDULER_ENABLED`, `true` por defecto |
+
+Ruby no tiene un equivalente directo a `@Scheduled` de Spring. Se eligió un hilo simple antes que
+una gema como `rufus-scheduler`: el Gemfile se mantiene mínimo y el comportamiento que hace falta
+cabe en treinta líneas.
+
+Dos detalles de implementación que no son evidentes:
+
+**Las transiciones se resuelven con un único `UPDATE ... RETURNING`**, no leyendo primero y
+actualizando después. Así la lectura y el cambio de estado son atómicos, y dos pasadas simultáneas
+no pueden publicar el mismo evento dos veces: la segunda simplemente no encuentra filas que
+cumplan la condición.
+
+**Un fallo en una pasada no mata el hilo.** Si lo matara, el contenedor seguiría viéndose sano para
+Docker pero ningún período volvería a transicionar en toda la vida del proceso, y nadie se
+enteraría.
+
+### Cómo demostrarlo sin esperar un día
+
+El enunciado sugiere programar vacaciones con `fechaInicio = hoy` y `fechaFin = hoy`. Aquí **no
+funciona**: la validación de `POST /vacaciones` exige que la fecha de fin sea posterior a la de
+inicio. Esa regla viene del Reto 4, es correcta, y no se modificó.
+
+Se eligió la tercera estrategia del enunciado: dos endpoints de desarrollo, protegidos con rol
+`ADMIN` y marcados como tales en la documentación.
+
+```bash
+curl -i -X POST http://localhost:8080/vacaciones/V-2026-0042/forzar-inicio   -H "Authorization: Bearer <token ADMIN>"
+
+curl -i -X POST http://localhost:8080/vacaciones/V-2026-0042/forzar-fin   -H "Authorization: Bearer <token ADMIN>"
+```
+
+Disparan exactamente la misma transición y el mismo evento que dispararía el paso del tiempo. No
+son un atajo que salte reglas: si el período no está en el estado de origen correcto, responden
+`409`.
+
+### Limitación conocida
+
+El hilo corre **dentro de cada instancia** del servicio. Mientras haya una sola, funciona.
+
+Si `vacaciones-service` se escalara a N réplicas, las N ejecutarían el job y publicarían el mismo
+evento N veces: N correos, N desactivaciones de cuenta. Hay dos defensas, complementarias:
+
+1. **Deduplicación en el consumidor**, que ya existe: `auth-service` y `notificaciones-service`
+   descartan el evento repetido por el `id` del envelope. Mitiga el daño, pero el trabajo duplicado
+   igual se hizo.
+2. **Coordinación en el productor**: garantizar que solo una instancia ejecute el job. Es lo que
+   resuelve el Reto 31 con un lock distribuido en base de datos (ShedLock).
+
+Este reto acepta la versión de instancia única. El Reto 11 usará esta limitación como caso de
+estudio al escalar horizontalmente.
+
+## Cancelación de períodos al retirar un empleado (Reto 5)
+
+Antes, si a un empleado lo retiraban, sus vacaciones programadas quedaban ahí indefinidamente. Al
+consumir `empleado.retirado` el servicio ahora pasa a `CANCELADA` los períodos de ese empleado.
+
+**Solo los que están en `PROGRAMADA`.** Un período `EN_CURSO` se deja correr hasta `FINALIZADA`, y
+eso es deliberado por dos razones:
+
+- Unas vacaciones que ya empezaron ocurrieron de verdad. Cancelarlas las borraría del historial.
+- Su `vacaciones.finalizadas` es justamente lo que `auth-service` necesita para cerrar el ciclo:
+  al recibirlo comprueba que la cuenta quedó con baja permanente y **no** la reactiva. Si
+  canceláramos el período en curso, ese evento nunca llegaría y el caso borde no podría
+  demostrarse.
 
 ## Arquitectura
 
