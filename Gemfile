@@ -13,4 +13,9 @@ gem 'dotenv', '~> 3.1'
 group :test do
   gem 'rspec', '~> 3.13'
   gem 'rack-test', '~> 2.1'
+  # Reto 6: reportes estándar para el pipeline del Reto 7 (JUnit XML para Jenkins, Cobertura XML
+  # para SonarQube).
+  gem 'rspec_junit_formatter', '~> 0.6'
+  gem 'simplecov', '~> 0.22', require: false
+  gem 'simplecov-cobertura', '~> 3.0', require: false
 end

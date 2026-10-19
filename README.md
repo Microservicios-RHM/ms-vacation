@@ -322,3 +322,58 @@ docker exec vacaciones-service wget -qO- http://127.0.0.1:8080/health
 
 `/health` responde el mismo envelope que el resto del ecosistema:
 `{"success": true, "message": "Servicio disponible", "data": {"status": "UP"}}`.
+
+## Pruebas (Reto 6)
+
+```bash
+bundle install
+bundle exec rspec                      # unitarias + integración, con reportes y umbral de cobertura
+bundle exec rspec --tag ~integration   # solo unitarias: no necesitan Docker
+```
+
+| Reporte | Ruta | Formato |
+|---|---|---|
+| Resultados | `reports/junit.xml` | JUnit XML (`rspec_junit_formatter`) |
+| Cobertura | `reports/coverage.xml` | Cobertura XML (`simplecov-cobertura`) |
+| Cobertura navegable | `reports/index.html` | HTML de SimpleCov |
+
+`bundle exec rspec` termina con código distinto de cero si una prueba falla **o** si la cobertura
+de líneas cae por debajo del 70 % (`minimum_coverage` en `spec/coverage_helper.rb`). Cobertura
+actual: 90,6 %.
+
+### Qué cubren
+
+- **Dominio** (`spec/domain`): `VacationPeriod#overlaps?` contra una tabla de 12 casos borde
+  (idéntico, contenido, contiene, empieza/termina dentro, se toca por un día en cada extremo,
+  adyacente, disjunto) más el cruce de año. La tabla vive en `spec/support/overlap_cases.rb`.
+- **Aplicación** (`spec/application`): las cuatro validaciones de `ScheduleVacation` con sus bordes
+  (fin igual a inicio, inicia hoy, inició ayer, solapamiento con `EN_CURSO`, ignorar `CANCELADA` y
+  otros empleados, empleado retirado) y el **orden** en que se evalúan; `ForceVacationTransition`
+  (el disparo manual que usa la suite BDD) con sus 409. Repositorio, registro de empleados y
+  publicador son dobles en memoria; `DomainOverlapVacationRepository` delega el solapamiento en la
+  regla de dominio para que el caso de uso no pruebe una copia de la regla escrita en el doble.
+- **Integración** (`spec/integration`, etiqueta `:integration`): `VacationRepository` y
+  `EmployeeRegistryRepository` contra un PostgreSQL 17 real. Valida migraciones idempotentes, el
+  formato `V-AAAA-NNNN`, el `CHECK` de estados, la atomicidad de las transiciones del scheduler y
+  —con **la misma tabla de 12 casos**— que la consulta de solapamiento en SQL coincida con la regla
+  de dominio en Ruby.
+
+### Decisiones
+
+- **Estrategia de integración: contenedor desechable.** `spec/support/postgres_container.rb` hace
+  lo mismo que Testcontainers con el CLI de Docker: arranca `postgres:17-alpine` (la imagen del
+  Compose) en un puerto aleatorio, espera con polling a que acepte conexiones, y lo destruye al
+  terminar. Se prefirió a una base embebida porque la regla de solapamiento está escrita también en
+  SQL y solo el mismo motor la prueba de verdad; y a una instancia fija en el Compose porque no
+  deja estado entre ejecuciones. Se descartó la gema `testcontainers-ruby` porque su cliente Docker
+  no soporta el *named pipe* de Docker Desktop en Windows.
+- **Qué no se prueba unitariamente** (excluido de la cobertura en `spec/coverage_helper.rb`):
+  `bootstrap.rb` (raíz de composición), `logging.rb`, y los reintentos de conexión de
+  `messaging/connection.rb` y `persistence/database.rb`. Son cableado sin reglas de negocio;
+  probarlos inflaría el porcentaje sin aportar seguridad.
+- **La trampa del 70 %.** Además de medir cobertura, se rompió la regla a propósito (`<=` por `<`
+  en `overlaps?`): 4 pruebas fallaron, cada una nombrando el caso borde exacto. Las aserciones
+  comprueban códigos de error, estados resultantes y eventos publicados (o su ausencia), no solo
+  que el código "corra".
+
+No existe un cálculo de días de vacaciones en el servicio, así que no hay prueba para él.
