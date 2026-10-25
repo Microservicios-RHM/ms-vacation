@@ -8,12 +8,15 @@ require_relative 'infrastructure/messaging/connection'
 require_relative 'infrastructure/messaging/consumer'
 require_relative 'infrastructure/messaging/publisher'
 require_relative 'infrastructure/http/app'
+require_relative 'infrastructure/scheduler'
 require_relative 'application/schedule_vacation'
 require_relative 'application/get_vacation'
 require_relative 'application/list_vacations'
 require_relative 'application/cancel_vacation'
 require_relative 'application/register_valid_employee'
 require_relative 'application/invalidate_employee'
+require_relative 'application/advance_vacation_periods'
+require_relative 'application/force_vacation_transition'
 
 # Raíz de composición, equivalente a server.ts (ms-employees), main.py (ms-notifications) y
 # main.go (ms-profiles): construye las implementaciones concretas y las inyecta en los casos de
@@ -63,7 +66,9 @@ module Bootstrap
     )
     consumer.on(
       'empleado.retirado',
-      Application::InvalidateEmployee.new(employee_registry: employee_registry, logger: logger)
+      Application::InvalidateEmployee.new(
+        employee_registry: employee_registry, vacation_repository: vacation_repository, logger: logger
+      )
     )
     consumer.start
 
@@ -74,6 +79,21 @@ module Bootstrap
     list_vacations = Application::ListVacations.new(vacation_repository: vacation_repository)
     cancel_vacation = Application::CancelVacation.new(vacation_repository: vacation_repository)
 
+    advance_vacation_periods = Application::AdvanceVacationPeriods.new(
+      vacation_repository: vacation_repository, publisher: publisher, logger: logger
+    )
+    force_vacation_transition = Application::ForceVacationTransition.new(
+      vacation_repository: vacation_repository, advance_vacation_periods: advance_vacation_periods
+    )
+
+    if settings.scheduler_enabled
+      Infrastructure::Scheduler.new(
+        interval_seconds: settings.scheduler_interval_seconds, logger: logger
+      ) { advance_vacation_periods.call }.start
+    else
+      logger.warn('Vacation scheduler disabled by configuration')
+    end
+
     logger.info('Vacations service started', port: settings.port)
 
     Infrastructure::Http::App.configure_app(
@@ -81,6 +101,7 @@ module Bootstrap
       get_vacation: get_vacation,
       list_vacations: list_vacations,
       cancel_vacation: cancel_vacation,
+      force_vacation_transition: force_vacation_transition,
       logger: logger
     )
   end

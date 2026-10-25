@@ -7,6 +7,7 @@ module Infrastructure
     :db_connect_max_attempts, :db_connect_retry_delay_ms,
     :broker_url, :broker_exchange, :broker_queue,
     :broker_connect_max_attempts, :broker_connect_retry_delay_ms,
+    :scheduler_enabled, :scheduler_interval_seconds,
     keyword_init: true
   ) do
     def database_url
@@ -47,7 +48,10 @@ module Infrastructure
         broker_exchange: ENV.fetch('BROKER_EXCHANGE', 'rhm.events'),
         broker_queue: ENV.fetch('BROKER_QUEUE', 'vacaciones.queue'),
         broker_connect_max_attempts: env_int('BROKER_CONNECT_MAX_ATTEMPTS', 5),
-        broker_connect_retry_delay_ms: env_int('BROKER_CONNECT_RETRY_DELAY_MS', 1000)
+        broker_connect_retry_delay_ms: env_int('BROKER_CONNECT_RETRY_DELAY_MS', 1000),
+
+        scheduler_enabled: ENV.fetch('SCHEDULER_ENABLED', 'true') == 'true',
+        scheduler_interval_seconds: env_int('SCHEDULER_INTERVAL_SECONDS', 60)
       )
     end
 

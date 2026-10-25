@@ -16,11 +16,13 @@ module Infrastructure
 
       # Nombrado distinto a "build": Sinatra::Base ya define un class method .build (interno,
       # arma la pila de middleware Rack) y un nombre igual lo sobreescribe silenciosamente.
-      def self.configure_app(schedule_vacation:, get_vacation:, list_vacations:, cancel_vacation:, logger:)
+      def self.configure_app(schedule_vacation:, get_vacation:, list_vacations:, cancel_vacation:,
+                             force_vacation_transition:, logger:)
         set :schedule_vacation, schedule_vacation
         set :get_vacation, get_vacation
         set :list_vacations, list_vacations
         set :cancel_vacation, cancel_vacation
+        set :force_vacation_transition, force_vacation_transition
         set :app_logger, logger
         self
       end
@@ -46,9 +48,13 @@ module Infrastructure
       end
 
       get '/vacaciones' do
-        periods = settings.list_vacations.execute(empleado_id: params['empleadoId'])
+        periods = settings.list_vacations.execute(
+          empleado_id: params['empleadoId'], estado: params['estado']
+        )
         status 200
         success_body('Períodos consultados correctamente', periods.map(&:to_h))
+      rescue Domain::AppError => e
+        halt e.status, app_error_body(e)
       end
 
       get '/vacaciones/:id' do
@@ -71,6 +77,24 @@ module Infrastructure
         )
         status 201
         success_body('Período de vacaciones programado correctamente', period.to_h)
+      rescue Domain::AppError => e
+        halt e.status, app_error_body(e)
+      end
+
+      # Endpoints de DESARROLLO, no de operación: existen para poder demostrar el ciclo completo en
+      # segundos en vez de esperar al cambio de día. Protegidos con rol ADMIN en el Gateway.
+      post '/vacaciones/:id/forzar-inicio' do
+        period = settings.force_vacation_transition.start(params['id'])
+        status 200
+        success_body('Período iniciado manualmente', period.to_h)
+      rescue Domain::AppError => e
+        halt e.status, app_error_body(e)
+      end
+
+      post '/vacaciones/:id/forzar-fin' do
+        period = settings.force_vacation_transition.finish(params['id'])
+        status 200
+        success_body('Período finalizado manualmente', period.to_h)
       rescue Domain::AppError => e
         halt e.status, app_error_body(e)
       end

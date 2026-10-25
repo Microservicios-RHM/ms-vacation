@@ -6,6 +6,9 @@ require_relative '../../../app/application/schedule_vacation'
 require_relative '../../../app/application/get_vacation'
 require_relative '../../../app/application/list_vacations'
 require_relative '../../../app/application/cancel_vacation'
+require_relative '../../../app/application/advance_vacation_periods'
+require_relative '../../../app/application/force_vacation_transition'
+require_relative '../../../app/infrastructure/logging'
 require_relative '../../support/fake_vacation_repository'
 require_relative '../../support/fake_employee_registry'
 require_relative '../../support/fake_publisher'
@@ -16,6 +19,7 @@ RSpec.describe Infrastructure::Http::App do
   let(:vacation_repository) { FakeVacationRepository.new }
   let(:employee_registry) { FakeEmployeeRegistry.new }
   let(:publisher) { FakePublisher.new }
+  let(:null_logger) { instance_double(Infrastructure::Logger, info: nil, warn: nil, error: nil) }
 
   def app
     Infrastructure::Http::App.configure_app(
@@ -25,6 +29,12 @@ RSpec.describe Infrastructure::Http::App do
       get_vacation: Application::GetVacation.new(vacation_repository: vacation_repository),
       list_vacations: Application::ListVacations.new(vacation_repository: vacation_repository),
       cancel_vacation: Application::CancelVacation.new(vacation_repository: vacation_repository),
+      force_vacation_transition: Application::ForceVacationTransition.new(
+        vacation_repository: vacation_repository,
+        advance_vacation_periods: Application::AdvanceVacationPeriods.new(
+          vacation_repository: vacation_repository, publisher: publisher, logger: null_logger
+        )
+      ),
       logger: nil
     )
   end

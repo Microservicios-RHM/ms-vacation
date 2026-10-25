@@ -34,12 +34,32 @@ class FakeVacationRepository
     @periods[id]
   end
 
-  def list_all
-    @periods.values
+  def list_all(estado: nil)
+    filter(@periods.values, estado)
   end
 
-  def list_by_employee(empleado_id)
-    @periods.values.select { |period| period.empleado_id == empleado_id }
+  def list_by_employee(empleado_id, estado: nil)
+    filter(@periods.values.select { |period| period.empleado_id == empleado_id }, estado)
+  end
+
+  def start_due(today)
+    transition_all('PROGRAMADA', 'EN_CURSO') { |period| period.fecha_inicio <= today }
+  end
+
+  def finish_due(today)
+    transition_all('EN_CURSO', 'FINALIZADA') { |period| period.fecha_fin < today }
+  end
+
+  def start_now(id)
+    transition_all('PROGRAMADA', 'EN_CURSO') { |period| period.id == id }.first
+  end
+
+  def finish_now(id)
+    transition_all('EN_CURSO', 'FINALIZADA') { |period| period.id == id }.first
+  end
+
+  def cancel_scheduled_for_employee(empleado_id)
+    transition_all('PROGRAMADA', 'CANCELADA') { |period| period.empleado_id == empleado_id }
   end
 
   def cancel(id)
@@ -48,5 +68,16 @@ class FakeVacationRepository
 
     period.estado = 'CANCELADA'
     period
+  end
+
+  private
+
+  def filter(periods, estado)
+    estado ? periods.select { |period| period.estado == estado } : periods
+  end
+
+  def transition_all(from_estado, to_estado)
+    @periods.values.select { |period| period.estado == from_estado && yield(period) }
+            .each { |period| period.estado = to_estado }
   end
 end
