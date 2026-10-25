@@ -1,2 +1,5 @@
+--require coverage_helper
 --require spec_helper
 --format documentation
+--format RspecJunitFormatter
+--out reports/junit.xml
