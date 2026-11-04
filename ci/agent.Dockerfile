@@ -6,3 +6,8 @@ FROM ruby:3.4-alpine
 RUN apk add --no-cache build-base postgresql-dev
 
 COPY --from=docker:29-cli /usr/local/bin/docker /usr/local/bin/docker
+
+# Sin root: usuario con el mismo uid/gid que Jenkins (1000), que es con el que el pipeline ejecuta el
+# agente. Sin home propio (-H): el Jenkinsfile usa HOME=/tmp.
+RUN addgroup -S -g 1000 ci && adduser -S -D -H -u 1000 -G ci -h /tmp ci
+USER ci
