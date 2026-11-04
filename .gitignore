@@ -57,3 +57,7 @@ build-iPhoneSimulator/
 
 # Reportes de pruebas generados (Reto 6): se generan, no se versionan
 /reports/
+
+# Artefactos del pipeline de CI (Reto 7)
+/.scannerwork/
+/.e2e/
