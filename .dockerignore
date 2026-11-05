@@ -4,3 +4,9 @@ spec
 .rspec
 coverage
 *.gem
+reports
+.scannerwork
+.e2e
+ci
+Jenkinsfile
+sonar-project.properties

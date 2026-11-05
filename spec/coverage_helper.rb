@@ -2,12 +2,14 @@
 # cualquier archivo de app/, o esas líneas no se cuentan.
 require 'simplecov'
 require 'simplecov-cobertura'
+require 'simplecov_json_formatter'
 
 SimpleCov.start do
   coverage_dir 'reports'
   formatter SimpleCov::Formatter::MultiFormatter.new([
     SimpleCov::Formatter::HTMLFormatter,      # reports/index.html  (para humanos)
-    SimpleCov::Formatter::CoberturaFormatter, # reports/coverage.xml (para SonarQube / Jenkins)
+    SimpleCov::Formatter::CoberturaFormatter, # reports/coverage.xml (para Jenkins: recordCoverage)
+    SimpleCov::Formatter::JSONFormatter,      # reports/coverage.json (para SonarQube)
   ])
 
   track_files 'app/**/*.rb'

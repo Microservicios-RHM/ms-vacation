@@ -334,7 +334,8 @@ bundle exec rspec --tag ~integration   # solo unitarias: no necesitan Docker
 | Reporte | Ruta | Formato |
 |---|---|---|
 | Resultados | `reports/junit.xml` | JUnit XML (`rspec_junit_formatter`) |
-| Cobertura | `reports/coverage.xml` | Cobertura XML (`simplecov-cobertura`) |
+| Cobertura | `reports/coverage.xml` | Cobertura XML (`simplecov-cobertura`), lo publica Jenkins |
+| Cobertura para SonarQube | `reports/coverage.json` | JSON de SimpleCov (`JSONFormatter`), el que lee el analizador de Ruby |
 | Cobertura navegable | `reports/index.html` | HTML de SimpleCov |
 
 `bundle exec rspec` termina con código distinto de cero si una prueba falla **o** si la cobertura
@@ -377,3 +378,25 @@ actual: 90,6 %.
   que el código "corra".
 
 No existe un cálculo de días de vacaciones en el servicio, así que no hay prueba para él.
+
+## Integración continua (Reto 7)
+
+El pipeline de este servicio está en el [`Jenkinsfile`](Jenkinsfile) y corre en el Jenkins de
+[rhm-database-infrastructure](https://github.com/Microservicios-RHM/rhm-database-infrastructure)
+(http://localhost:9090, job `ms-vacation`). Allí están el acceso, la tabla completa de reportes y las
+decisiones técnicas.
+
+```text
+Checkout → Build → Test → SonarQube → Quality Gate → Package → Publish → E2E Tests
+```
+
+| Archivo | Para qué |
+|---|---|
+| `Jenkinsfile` | Pipeline declarativo; Build y Test corren en la imagen de `ci/agent.Dockerfile` como agente efímero |
+| `sonar-project.properties` | Clave del proyecto, fuentes, reporte de cobertura y exclusiones para SonarQube |
+| `ci/agent.Dockerfile` | Agente de Build/Test: `ruby:3.4-alpine` + toolchain + cliente Docker (las pruebas de integración usan `docker run`) |
+
+- **Resultados**: `reports/junit.xml` → paso `junit` (pestaña *Tests* del build).
+- **Cobertura**: `reports/coverage.xml` (Cobertura) → `recordCoverage`; `reports/coverage.json` (SimpleCov JSON) → SonarQube; `reports/index.html` → `publishHTML`.
+- **E2E**: la etapa levanta el sistema completo con la imagen `rhm/ms-vacation:<build>-<sha7>` recién construida, corre la suite BDD de [e2e-tests](https://github.com/Microservicios-RHM/e2e-tests) y publica *Cucumber reports*, *Reporte BDD* y los logs del stack.
+- Una prueba fallida deja el build **UNSTABLE** y no se empaqueta; un Quality Gate fallido (cobertura < 70 %) o un Dockerfile roto lo dejan en **FAILURE**.
