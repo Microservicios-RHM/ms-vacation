@@ -12,7 +12,7 @@
 //
 // Configuración que viene de Jenkins (jenkins/casc.yaml en rhm-database-infrastructure), nunca de
 // este archivo: credenciales `sonarqube-token` y `e2e-admin`, y las variables RHM_GIT_BASE_URL,
-// RHM_GIT_BRANCH, RHM_REGISTRY, RHM_CI_NETWORK y DOCKER_GID.
+// RHM_GIT_BRANCH, RHM_REGISTRY, RHM_CI_NETWORK, E2E_BASE_URL y DOCKER_GID.
 
 pipeline {
   agent any
@@ -210,7 +210,7 @@ pipeline {
               dir('e2e-tests') {
                 sh 'npm ci --no-audit --no-fund'
                 sh '''
-                  export BASE_URL=http://api-gateway:8080
+                  export BASE_URL="${E2E_BASE_URL:-http://api-gateway:8080}"
                   export E2E_ADMIN_USERNAME="$E2E_ADMIN_USR" E2E_ADMIN_PASSWORD="$E2E_ADMIN_PSW"
                   npm test || echo "Hay escenarios BDD fallidos: ver Cucumber Reports"
                 '''
