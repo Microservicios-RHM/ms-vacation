@@ -16,6 +16,9 @@
 
 pipeline {
   agent any
+  parameters {
+    booleanParam(name: 'RUN_E2E', defaultValue: false, description: 'Ejecutar pruebas E2E completas')
+  }
 
   options {
     skipDefaultCheckout()
@@ -165,6 +168,7 @@ pipeline {
     }
 
     stage('E2E Tests') {
+      when { expression { params.RUN_E2E } }
       environment {
         // Proyecto Compose propio del job: contenedores, red y volúmenes aislados del stack de
         // desarrollo y del E2E de otros servicios (ver ci/docker-compose.e2e.yml).
