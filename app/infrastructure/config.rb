@@ -22,6 +22,7 @@ module Infrastructure
 
     def self.load
       Dotenv.load if File.exist?('.env')
+      load_file_backed_values
 
       missing = REQUIRED.reject { |key| ENV[key] && !ENV[key].empty? }
       raise ConfigError, "Configuración inválida o incompleta: #{missing.join(', ')}" unless missing.empty?
@@ -53,6 +54,14 @@ module Infrastructure
         scheduler_enabled: ENV.fetch('SCHEDULER_ENABLED', 'true') == 'true',
         scheduler_interval_seconds: env_int('SCHEDULER_INTERVAL_SECONDS', 60)
       )
+    end
+
+    def self.load_file_backed_values
+      %w[DB_PASSWORD BROKER_URL].each do |key|
+        next if ENV[key] && !ENV[key].empty?
+        path = ENV["#{key}_FILE"]
+        ENV[key] = File.read(path).strip if path && !path.empty?
+      end
     end
 
     def self.env_int(key, fallback)
