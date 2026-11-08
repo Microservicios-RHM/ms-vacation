@@ -33,7 +33,8 @@ module Infrastructure
           routing_key: type,
           persistent: true,
           content_type: 'application/json',
-          message_id: envelope[:id]
+          message_id: envelope[:id],
+          headers: trace_headers
         )
         @logger.info('Event published', eventType: type, eventId: envelope[:id])
       rescue StandardError => e
@@ -41,6 +42,13 @@ module Infrastructure
       end
 
       private
+
+      def trace_headers
+        trace_id = Thread.current[:trace_id].to_s.downcase
+        return {} unless trace_id.match?(/\A[0-9a-f]{32}\z/)
+
+        { 'traceparent' => "00-#{trace_id}-#{SecureRandom.hex(8)}-01" }
+      end
 
       def ensure_exchange!
         return if @exchange
