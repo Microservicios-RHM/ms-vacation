@@ -10,6 +10,10 @@ module PostgresContainer
   USER = 'vacations_test'.freeze
   PASSWORD = 'vacations_test'.freeze
   DATABASE = 'vacations_test'.freeze
+  # En ejecución local apunta al host del proceso. En el agente Docker de
+  # Jenkins, POSTGRES_TEST_HOST=host.docker.internal alcanza el puerto que el
+  # daemon Docker publica en el host, no el loopback del agente efímero.
+  HOST = ENV.fetch('POSTGRES_TEST_HOST', '127.0.0.1').freeze
   MAX_ATTEMPTS = 30
   INTERVAL_SECONDS = 1
 
@@ -36,7 +40,7 @@ module PostgresContainer
       at_exit { stop }
 
       host_port = docker('port', @container_id, '5432/tcp').lines.first.strip.split(':').last
-      url = "postgres://#{USER}:#{PASSWORD}@127.0.0.1:#{host_port}/#{DATABASE}"
+      url = "postgres://#{USER}:#{PASSWORD}@#{HOST}:#{host_port}/#{DATABASE}"
       wait_until_ready(url)
       url
     end

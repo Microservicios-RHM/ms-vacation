@@ -86,6 +86,7 @@ pipeline {
       }
       environment {
         HOME = '/tmp'
+        POSTGRES_TEST_HOST = 'host.docker.internal'
       }
       steps {
         // Unitarias + integración, con reportes JUnit XML y Cobertura XML (Reto 6, ver .rspec y
