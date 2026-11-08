@@ -35,6 +35,11 @@ module Infrastructure
         success_body('Servicio disponible', { status: 'UP' })
       end
 
+      get '/metrics' do
+        content_type 'text/plain; version=0.0.4; charset=utf-8'
+        "# HELP rhm_vacations_service_info Static service identity metric\n# TYPE rhm_vacations_service_info gauge\nrhm_vacations_service_info{service=\"vacaciones-service\"} 1\n"
+      end
+
       # Montadas bajo /vacaciones (no en la raíz) para poder vivir detrás del API Gateway sin
       # reescritura de rutas: el Gateway ya proxea /vacaciones/* preservando la ruta. Se
       # registran antes que GET /vacaciones/:id — Sinatra prueba las rutas en el orden en que se
