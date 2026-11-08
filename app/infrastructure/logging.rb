@@ -24,11 +24,13 @@ module Infrastructure
       return if LEVELS.fetch(level) < @threshold
 
       payload = {
+        timestamp: Time.now.utc.iso8601(3),
         level: level,
-        time: Time.now.utc.strftime('%Y-%m-%dT%H:%M:%S.%3NZ'),
         service: @service,
-        msg: msg,
-      }.merge(fields)
+        message: msg,
+        context: fields,
+        traceId: fields.delete(:traceId) || fields.delete(:trace_id) || Thread.current[:trace_id],
+      }
       @io.puts(JSON.generate(payload))
     end
   end

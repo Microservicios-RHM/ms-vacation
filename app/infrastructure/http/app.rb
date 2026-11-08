@@ -31,6 +31,7 @@ module Infrastructure
 
       before do
         content_type :json
+        Thread.current[:trace_id] = request.env['HTTP_TRACEPARENT'].to_s.split('-')[1]
       end
 
       get '/health' do
