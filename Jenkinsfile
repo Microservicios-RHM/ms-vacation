@@ -185,7 +185,7 @@ pipeline {
             repo="$RHM_GIT_BASE_URL/rhm-database-infrastructure.git"
             git clone --quiet --depth 1 $(branch_or_default "$repo") "$repo" rhm-database-infrastructure
     sh rhm-database-infrastructure/ci/checkout-stack.sh
-    SECRETS_DIR=rhm-database-infrastructure/secrets sh rhm-database-infrastructure/scripts/setup-secrets.sh
+    sh rhm-database-infrastructure/ci/provision-e2e-secret-volume.sh
           '''
           // El servicio bajo prueba no se reconstruye desde el código: se usa la imagen de Package.
           writeFile file: 'service-under-test.yml', text: """\
