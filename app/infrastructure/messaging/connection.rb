@@ -35,6 +35,10 @@ module Infrastructure
         @connection.create_channel
       end
 
+      def healthy?
+        @connection && @connection.open?
+      end
+
       def close
         @connection&.close
       end

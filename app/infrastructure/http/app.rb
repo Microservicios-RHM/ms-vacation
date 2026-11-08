@@ -17,13 +17,15 @@ module Infrastructure
       # Nombrado distinto a "build": Sinatra::Base ya define un class method .build (interno,
       # arma la pila de middleware Rack) y un nombre igual lo sobreescribe silenciosamente.
       def self.configure_app(schedule_vacation:, get_vacation:, list_vacations:, cancel_vacation:,
-                             force_vacation_transition:, logger:)
+                             force_vacation_transition:, logger:, health_check:)
         set :schedule_vacation, schedule_vacation
         set :get_vacation, get_vacation
         set :list_vacations, list_vacations
         set :cancel_vacation, cancel_vacation
         set :force_vacation_transition, force_vacation_transition
         set :app_logger, logger
+        # Sinatra evalÃºa Proc al asignarlo como setting; el array conserva el callback para cada request.
+        set :health_check_callbacks, [health_check]
         self
       end
 
@@ -32,7 +34,10 @@ module Infrastructure
       end
 
       get '/health' do
-        success_body('Servicio disponible', { status: 'UP' })
+        checks = settings.health_check_callbacks.first.call
+        status_value = checks.values.all? { |value| value == 'UP' } ? 'UP' : 'DOWN'
+        status(status_value == 'UP' ? 200 : 503)
+        JSON.generate(status: status_value, service: 'vacaciones-service', checks: checks)
       end
 
       get '/metrics' do
