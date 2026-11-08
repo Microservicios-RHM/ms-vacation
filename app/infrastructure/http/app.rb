@@ -37,7 +37,7 @@ module Infrastructure
         checks = settings.health_check_callbacks.first.call
         status_value = checks.values.all? { |value| value == 'UP' } ? 'UP' : 'DOWN'
         status(status_value == 'UP' ? 200 : 503)
-        JSON.generate(status: status_value, service: 'vacaciones-service', checks: checks)
+        JSON.generate(success: status_value == 'UP', status: status_value, service: 'vacaciones-service', checks: checks)
       end
 
       get '/metrics' do
