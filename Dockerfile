@@ -1,7 +1,7 @@
 # Se fija Alpine explícitamente: `ruby:3.4-alpine` es una etiqueta flotante y la versión 3.24
 # presenta errores de extracción de GCC en algunos Docker Desktop. Alpine 3.21 fue validado con
 # las dependencias nativas de pg y hace la imagen reproducible.
-FROM ruby:3.4-alpine3.21 AS build
+FROM ruby:3.4-alpine3.24 AS build
 WORKDIR /app
 
 RUN apk add --no-cache build-base postgresql-dev
@@ -9,7 +9,7 @@ RUN apk add --no-cache build-base postgresql-dev
 COPY Gemfile Gemfile.lock ./
 RUN bundle config set without 'test' && bundle install
 
-FROM ruby:3.4-alpine3.21
+FROM ruby:3.4-alpine3.24
 WORKDIR /app
 
 RUN addgroup -S app && adduser -S app -G app

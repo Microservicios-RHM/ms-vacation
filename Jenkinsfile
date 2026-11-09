@@ -168,7 +168,7 @@ pipeline {
       steps {
         // Dockerfile multi-stage: instala las gemas (sin el grupo test) con la toolchain en una etapa
         // y copia solo el bundle resultante a la imagen final, sin compiladores.
-        sh 'docker build --pull=false -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:latest" .'
+        sh 'docker build --pull -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:latest" .'
         sh 'docker image inspect "$IMAGE:$IMAGE_TAG" --format "Imagen construida: {{index .RepoTags 0}} ({{.Size}} bytes)"'
       }
     }
