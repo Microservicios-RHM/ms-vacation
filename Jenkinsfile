@@ -55,6 +55,12 @@ pipeline {
       }
     }
 
+    stage('Secret scan') {
+      steps {
+        sh 'docker run --rm --volumes-from "$HOSTNAME" zricethezav/gitleaks:v8.24.2 detect --source="$PWD" --no-git --redact --exit-code=1'
+      }
+    }
+
     stage('Build') {
       agent {
         // Imagen del agente versionada en el repo: Ruby + toolchain de gemas nativas + cliente Docker.
@@ -117,12 +123,6 @@ pipeline {
             allowMissing         : true
           ])
         }
-      }
-    }
-
-    stage('Secret scan') {
-      steps {
-        sh 'docker run --rm --volumes-from "$HOSTNAME" zricethezav/gitleaks:v8.24.2 detect --source="$PWD" --no-git --redact --exit-code=1'
       }
     }
 
