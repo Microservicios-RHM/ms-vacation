@@ -1,5 +1,6 @@
 require_relative 'infrastructure/config'
 require_relative 'infrastructure/logging'
+require_relative 'infrastructure/observability'
 require_relative 'infrastructure/persistence/database'
 require_relative 'infrastructure/persistence/migrations'
 require_relative 'infrastructure/persistence/vacation_repository'
@@ -24,6 +25,7 @@ require_relative 'application/force_vacation_transition'
 module Bootstrap
   def self.build
     settings = Infrastructure::Config.load
+    Infrastructure::Observability.configure_tracing
     logger = Infrastructure::Logger.new(level: settings.log_level)
 
     logger.info('Connecting to PostgreSQL', host: settings.db_host, database: settings.db_name)

@@ -44,10 +44,9 @@ module Infrastructure
       private
 
       def trace_headers
-        trace_id = Thread.current[:trace_id].to_s.downcase
-        return {} unless trace_id.match?(/\A[0-9a-f]{32}\z/)
-
-        { 'traceparent' => "00-#{trace_id}-#{SecureRandom.hex(8)}-01" }
+        headers = {}
+        OpenTelemetry.propagation.inject(headers)
+        headers
       end
 
       def ensure_exchange!

@@ -4,6 +4,7 @@ require 'date'
 require_relative 'response_helpers'
 require_relative '../../domain/errors'
 require_relative '../../domain/error_codes'
+require_relative '../observability'
 
 module Infrastructure
   module Http
@@ -31,7 +32,18 @@ module Infrastructure
 
       before do
         content_type :json
-        Thread.current[:trace_id] = request.env['HTTP_TRACEPARENT'].to_s.split('-')[1]
+        Thread.current[:request_started_at] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        span_context = OpenTelemetry::Trace.current_span.context
+        Thread.current[:trace_id] = span_context.valid? ? span_context.hex_trace_id : request.env['HTTP_TRACEPARENT'].to_s.split('-')[1]
+      end
+
+      after do
+        unless request.path == '/metrics'
+          duration = Process.clock_gettime(Process::CLOCK_MONOTONIC) - Thread.current[:request_started_at]
+          Infrastructure::Observability.observe_http(request.request_method, response.status, duration)
+          settings.app_logger&.info('HTTP request completed', method: request.request_method, path: request.path, status: response.status, durationMs: (duration * 1000).round(2))
+        end
+        Thread.current[:trace_id] = nil
       end
 
       get '/health' do
@@ -43,7 +55,7 @@ module Infrastructure
 
       get '/metrics' do
         content_type 'text/plain; version=0.0.4; charset=utf-8'
-        "# HELP rhm_vacations_service_info Static service identity metric\n# TYPE rhm_vacations_service_info gauge\nrhm_vacations_service_info{service=\"vacaciones-service\"} 1\n"
+        Infrastructure::Observability.metrics
       end
 
       # Montadas bajo /vacaciones (no en la raíz) para poder vivir detrás del API Gateway sin
