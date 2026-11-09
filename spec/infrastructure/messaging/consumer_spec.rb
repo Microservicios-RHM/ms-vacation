@@ -59,7 +59,6 @@ RSpec.describe Infrastructure::Messaging::Consumer do
     expect(Infrastructure::Observability).to have_received(:observe_event)
       .with('empleado.creado', 'processed')
     expect(channel).to have_received(:ack).with(17)
-    expect(Thread.current[:trace_id]).to be_nil
   end
 
   it 'registra el fallo y descarta el evento cuando el handler lanza una excepción' do

@@ -1,5 +1,6 @@
 require 'json'
 require 'time'
+require 'opentelemetry-api'
 
 module Infrastructure
   # Logger JSON de una línea, equivalente en forma a Pino (ms-employees), logging_setup.py
@@ -23,13 +24,14 @@ module Infrastructure
     def log(level, msg, fields)
       return if LEVELS.fetch(level) < @threshold
 
+      span_context = OpenTelemetry::Trace.current_span.context
       payload = {
         timestamp: Time.now.utc.iso8601(3),
         level: level,
         service: @service,
         message: msg,
         context: fields,
-        traceId: fields.delete(:traceId) || fields.delete(:trace_id) || Thread.current[:trace_id],
+        traceId: fields.delete(:traceId) || fields.delete(:trace_id) || (span_context.hex_trace_id if span_context.valid?),
       }
       @io.puts(JSON.generate(payload))
     end

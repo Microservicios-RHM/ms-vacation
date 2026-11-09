@@ -59,12 +59,9 @@ module Infrastructure
           OpenTelemetry.tracer_provider.tracer('vacaciones-service').in_span(
             "consume #{delivery_info.routing_key}", kind: :consumer
           ) do
-            Thread.current[:trace_id] = OpenTelemetry::Trace.current_span.context.hex_trace_id
             route(delivery_info.routing_key, body)
             Infrastructure::Observability.observe_event(delivery_info.routing_key, 'processed')
             channel.ack(delivery_info.delivery_tag)
-          ensure
-            Thread.current[:trace_id] = nil
           end
         end
       rescue StandardError => e

@@ -32,18 +32,15 @@ module Infrastructure
 
       before do
         content_type :json
-        Thread.current[:request_started_at] = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        span_context = OpenTelemetry::Trace.current_span.context
-        Thread.current[:trace_id] = span_context.valid? ? span_context.hex_trace_id : request.env['HTTP_TRACEPARENT'].to_s.split('-')[1]
+        @request_started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
 
       after do
         unless request.path == '/metrics'
-          duration = Process.clock_gettime(Process::CLOCK_MONOTONIC) - Thread.current[:request_started_at]
+          duration = Process.clock_gettime(Process::CLOCK_MONOTONIC) - @request_started_at
           Infrastructure::Observability.observe_http(request.request_method, response.status, duration)
           settings.app_logger&.info('HTTP request completed', method: request.request_method, path: request.path, status: response.status, durationMs: (duration * 1000).round(2))
         end
-        Thread.current[:trace_id] = nil
       end
 
       get '/health' do

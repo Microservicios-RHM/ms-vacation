@@ -27,7 +27,10 @@ module Infrastructure
       Dotenv.load if File.exist?('.env')
       load_file_backed_values
 
-      missing = REQUIRED.reject { |key| ENV[key] && !ENV[key].empty? }
+      missing = REQUIRED.reject do |key|
+        value = ENV.fetch(key, nil)
+        value && !value.empty?
+      end
       raise ConfigError, "Configuración inválida o incompleta: #{missing.join(', ')}" unless missing.empty?
 
       broker_url = ENV.fetch('BROKER_URL')
@@ -61,14 +64,15 @@ module Infrastructure
 
     def self.load_file_backed_values
       %w[DB_PASSWORD BROKER_URL].each do |key|
-        next if ENV[key] && !ENV[key].empty?
-        path = ENV["#{key}_FILE"]
-        ENV[key] = File.read(path).strip if path && !path.empty?
+        value = ENV.fetch(key, nil)
+        next if value && !value.empty?
+        path = ENV.fetch("#{key}_FILE", nil)
+        ENV.store(key, File.read(path).strip) if path && !path.empty?
       end
     end
 
     def self.env_int(key, fallback)
-      value = ENV[key]
+      value = ENV.fetch(key, nil)
       return fallback if value.nil? || value.empty?
 
       Integer(value)
