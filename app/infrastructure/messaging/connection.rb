@@ -25,10 +25,12 @@ module Infrastructure
           return self
         rescue StandardError => e
           last_error = e
-          @logger.warn('RabbitMQ connection attempt failed', attempt: attempt, error: e.message)
+          # Bunny puede incluir la URI AMQP completa en el mensaje de error. Solo se conserva la
+          # clase para no exponer credenciales.
+          @logger.warn('RabbitMQ connection attempt failed', attempt: attempt, errorType: e.class.name)
           sleep(@retry_delay_ms / 1000.0 * attempt) if attempt < @max_attempts
         end
-        raise "No fue posible conectar a RabbitMQ: #{last_error&.message}"
+        raise 'No fue posible conectar a RabbitMQ'
       end
 
       def create_channel

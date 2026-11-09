@@ -1,4 +1,5 @@
 require 'dotenv'
+require 'uri'
 
 module Infrastructure
   Settings = Struct.new(
@@ -11,7 +12,9 @@ module Infrastructure
     keyword_init: true
   ) do
     def database_url
-      "postgres://#{db_user}:#{db_password}@#{db_host}:#{db_port}/#{db_name}"
+      user = URI.encode_www_form_component(db_user)
+      password = URI.encode_www_form_component(db_password)
+      "postgres://#{user}:#{password}@#{db_host}:#{db_port}/#{db_name}"
     end
   end
 
