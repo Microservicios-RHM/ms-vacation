@@ -1,5 +1,6 @@
 require 'json'
 require_relative 'envelope'
+require_relative '../observability/message_tracing'
 
 module Infrastructure
   module Messaging
@@ -24,8 +25,12 @@ module Infrastructure
         queue = channel.queue(@queue_name, durable: true)
         @handlers.each_key { |routing_key| queue.bind(exchange, routing_key: routing_key) }
 
-        queue.subscribe(manual_ack: true, block: false) do |delivery_info, _properties, body|
-          dispatch(channel, delivery_info, body)
+        queue.subscribe(manual_ack: true, block: false) do |delivery_info, properties, body|
+          # Reto 8: el evento se procesa dentro de la traza de quien lo publicó (traceparent en las
+          # cabeceras): el empleado válido registrado aquí cuelga en Zipkin del alta del empleado.
+          Observability::MessageTracing.with_consume_span(
+            properties&.headers, @queue_name, delivery_info.routing_key
+          ) { dispatch(channel, delivery_info, body) }
         end
 
         @logger.info(

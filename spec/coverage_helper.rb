@@ -18,6 +18,7 @@ SimpleCov.start do
   # Excluidos a propósito: no contienen reglas de negocio, solo cableado o adaptadores a librerías.
   # Probarlos unitariamente inflaría la cobertura sin verificar ningún comportamiento.
   add_filter 'app/bootstrap.rb'                            # raíz de composición
+  add_filter 'app/infrastructure/observability/tracing.rb' # configuración global del SDK de OpenTelemetry
   add_filter 'app/infrastructure/logging.rb'               # envoltorio de logger JSON
   add_filter 'app/infrastructure/messaging/connection.rb'  # reintentos de conexión a RabbitMQ
   add_filter 'app/infrastructure/persistence/database.rb'  # reintentos de conexión a PostgreSQL

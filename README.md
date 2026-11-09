@@ -400,3 +400,16 @@ Checkout → Build → Test → SonarQube → Quality Gate → Package → Publi
 - **Cobertura**: `reports/coverage.xml` (Cobertura) → `recordCoverage`; `reports/coverage.json` (SimpleCov JSON) → SonarQube; `reports/index.html` → `publishHTML`.
 - **E2E**: la etapa levanta el sistema completo con la imagen `rhm/ms-vacation:<build>-<sha7>` recién construida, corre la suite BDD de [e2e-tests](https://github.com/Microservicios-RHM/e2e-tests) y publica *Cucumber reports*, *Reporte BDD* y los logs del stack.
 - Una prueba fallida deja el build **UNSTABLE** y no se empaqueta; un Quality Gate fallido (cobertura < 70 %) o un Dockerfile roto lo dejan en **FAILURE**.
+
+## Observabilidad (Reto 8)
+
+Instrumentación de `vacaciones-service` para el stack de observabilidad del ecosistema (Prometheus,
+Loki, Zipkin y Grafana). Arquitectura, dashboard, alertas y pruebas de caos en el
+[README de infraestructura](https://github.com/Microservicios-RHM/rhm-database-infrastructure#observabilidad-y-monitoreo-reto-8).
+
+| Pilar | Implementación |
+|---|---|
+| Métricas | `prometheus-client` (client_ruby) — `GET /metrics` como middleware Rack ([metrics.rb](app/infrastructure/observability/metrics.rb)). client_ruby no trae métricas de proceso: CPU y memoria se calculan en cada scrape. Métricas comunes a los 7 servicios: `http_requests_total{method,route,status}`, `http_request_duration_seconds{method,route,status}`, `process_cpu_seconds_total`, `process_resident_memory_bytes`. |
+| Health | `GET /health` verifica PostgreSQL (`SELECT 1`) y la conexión a RabbitMQ. Formato `{"status":"UP","service":"vacaciones-service","checks":{...}}`, 200 si todo está UP y 503 si algo está DOWN. |
+| Trazas | `opentelemetry-sdk` + `instrumentation-sinatra`/`rack`/`pg` + `exporter-zipkin`. Publicación y consumo en RabbitMQ con propagación manual del `traceparent` y, para el scheduler, un **span raíz** `scheduler.vacaciones.iniciar` por período antes de publicar `vacaciones.iniciadas` ([message_tracing.rb](app/infrastructure/observability/message_tracing.rb)): así la suspensión de la cuenta (auth) y el correo (notificaciones) aparecen en una sola traza. Exporta a `OTEL_EXPORTER_ZIPKIN_ENDPOINT` con propagación W3C Trace Context; sin esa variable el tracing queda desactivado. |
+| Logs | `Infrastructure::Logger` con `timestamp`, `level`, `service`, `traceId`, `message`. |

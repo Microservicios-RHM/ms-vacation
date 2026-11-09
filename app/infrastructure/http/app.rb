@@ -2,6 +2,7 @@ require 'sinatra/base'
 require 'json'
 require 'date'
 require_relative 'response_helpers'
+require_relative '../observability/health'
 require_relative '../../domain/errors'
 require_relative '../../domain/error_codes'
 
@@ -17,13 +18,14 @@ module Infrastructure
       # Nombrado distinto a "build": Sinatra::Base ya define un class method .build (interno,
       # arma la pila de middleware Rack) y un nombre igual lo sobreescribe silenciosamente.
       def self.configure_app(schedule_vacation:, get_vacation:, list_vacations:, cancel_vacation:,
-                             force_vacation_transition:, logger:)
+                             force_vacation_transition:, logger:, health_checks: {})
         set :schedule_vacation, schedule_vacation
         set :get_vacation, get_vacation
         set :list_vacations, list_vacations
         set :cancel_vacation, cancel_vacation
         set :force_vacation_transition, force_vacation_transition
         set :app_logger, logger
+        set :health_checks, health_checks
         self
       end
 
@@ -31,8 +33,13 @@ module Infrastructure
         content_type :json
       end
 
+      # Reto 8: estado real del servicio y de sus dependencias (200 UP / 503 DOWN).
       get '/health' do
-        success_body('Servicio disponible', { status: 'UP' })
+        report = Observability::Health.evaluate(
+          ENV.fetch('OTEL_SERVICE_NAME', 'vacaciones-service'), settings.health_checks
+        )
+        status(report[:status] == 'UP' ? 200 : 503)
+        JSON.generate(report)
       end
 
       # Montadas bajo /vacaciones (no en la raíz) para poder vivir detrás del API Gateway sin

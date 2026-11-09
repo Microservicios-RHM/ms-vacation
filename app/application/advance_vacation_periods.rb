@@ -7,10 +7,19 @@ module Application
     EVENT_STARTED = 'vacaciones.iniciadas'.freeze
     EVENT_FINISHED = 'vacaciones.finalizadas'.freeze
 
-    def initialize(vacation_repository:, publisher:, logger:)
+    # Envoltorio de cada transición. Por defecto no hace nada; en producción (bootstrap.rb) es
+    # Infrastructure::Observability::TransitionTracing, que abre el span raíz del Reto 8 para que
+    # el evento publicado arrastre su traza hasta auth-service y notificaciones-service. La capa de
+    # aplicación no depende de OpenTelemetry.
+    module NoTracing
+      def self.call(_event_type, _period) = yield
+    end
+
+    def initialize(vacation_repository:, publisher:, logger:, transition_tracing: NoTracing)
       @vacation_repository = vacation_repository
       @publisher = publisher
       @logger = logger
+      @transition_tracing = transition_tracing
     end
 
     def call(today = Date.today.iso8601)
@@ -30,21 +39,25 @@ module Application
 
     def publish_all(periods, type)
       periods.each do |period|
-        @publisher.publish(
-          type: type,
-          data: {
-            id: period.id,
-            empleadoId: period.empleado_id,
-            fechaInicio: period.fecha_inicio,
-            fechaFin: period.fecha_fin,
-            estado: period.estado,
-          }
-        )
-        @logger.info(
-          'vacation period transitioned',
-          vacacionId: period.id, empleadoId: period.empleado_id, estado: period.estado
-        )
+        @transition_tracing.call(type, period) { publish_transition(period, type) }
       end
+    end
+
+    def publish_transition(period, type)
+      @publisher.publish(
+        type: type,
+        data: {
+          id: period.id,
+          empleadoId: period.empleado_id,
+          fechaInicio: period.fecha_inicio,
+          fechaFin: period.fecha_fin,
+          estado: period.estado,
+        }
+      )
+      @logger.info(
+        'vacation period transitioned',
+        vacacionId: period.id, empleadoId: period.empleado_id, estado: period.estado
+      )
     end
   end
 end
