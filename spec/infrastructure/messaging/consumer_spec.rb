@@ -42,4 +42,39 @@ RSpec.describe Infrastructure::Messaging::Consumer do
 
     expect { consumer.route('empleado.creado', body) }.to raise_error('fallo del handler')
   end
+
+  it 'propaga el contexto de trazas, registra la métrica y confirma el evento' do
+    channel = double('channel', ack: nil)
+    delivery = double('delivery', routing_key: 'empleado.creado', delivery_tag: 17)
+    properties = double('properties', headers: {
+                          'traceparent' => '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01'
+                        })
+    handled = false
+    consumer.on('empleado.creado') { handled = true }
+    allow(Infrastructure::Observability).to receive(:observe_event)
+
+    consumer.send(:dispatch, channel, delivery, properties, body)
+
+    expect(handled).to be(true)
+    expect(Infrastructure::Observability).to have_received(:observe_event)
+      .with('empleado.creado', 'processed')
+    expect(channel).to have_received(:ack).with(17)
+    expect(Thread.current[:trace_id]).to be_nil
+  end
+
+  it 'registra el fallo y descarta el evento cuando el handler lanza una excepción' do
+    channel = double('channel', nack: nil)
+    delivery = double('delivery', routing_key: 'empleado.creado', delivery_tag: 18)
+    properties = double('properties', headers: nil)
+    consumer.on('empleado.creado') { raise 'fallo controlado' }
+    allow(Infrastructure::Observability).to receive(:observe_event)
+
+    consumer.send(:dispatch, channel, delivery, properties, body)
+
+    expect(Infrastructure::Observability).to have_received(:observe_event)
+      .with('empleado.creado', 'failed')
+    expect(logger).to have_received(:error)
+      .with('event discarded', routingKey: 'empleado.creado', error: 'fallo controlado')
+    expect(channel).to have_received(:nack).with(18, false, false)
+  end
 end
