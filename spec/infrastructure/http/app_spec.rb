@@ -35,7 +35,8 @@ RSpec.describe Infrastructure::Http::App do
           vacation_repository: vacation_repository, publisher: publisher, logger: null_logger
         )
       ),
-      logger: nil
+      logger: nil,
+      health_check: -> { { database: 'UP', broker: 'UP' } }
     )
   end
 

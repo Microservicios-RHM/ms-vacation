@@ -33,7 +33,8 @@ module Infrastructure
           routing_key: type,
           persistent: true,
           content_type: 'application/json',
-          message_id: envelope[:id]
+          message_id: envelope[:id],
+          headers: trace_headers
         )
         @logger.info('Event published', eventType: type, eventId: envelope[:id])
       rescue StandardError => e
@@ -41,6 +42,12 @@ module Infrastructure
       end
 
       private
+
+      def trace_headers
+        headers = {}
+        OpenTelemetry.propagation.inject(headers)
+        headers
+      end
 
       def ensure_exchange!
         return if @exchange

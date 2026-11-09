@@ -1,4 +1,5 @@
 require 'dotenv'
+require 'uri'
 
 module Infrastructure
   Settings = Struct.new(
@@ -11,7 +12,9 @@ module Infrastructure
     keyword_init: true
   ) do
     def database_url
-      "postgres://#{db_user}:#{db_password}@#{db_host}:#{db_port}/#{db_name}"
+      user = URI.encode_www_form_component(db_user)
+      password = URI.encode_www_form_component(db_password)
+      "postgres://#{user}:#{password}@#{db_host}:#{db_port}/#{db_name}"
     end
   end
 
@@ -22,8 +25,12 @@ module Infrastructure
 
     def self.load
       Dotenv.load if File.exist?('.env')
+      load_file_backed_values
 
-      missing = REQUIRED.reject { |key| ENV[key] && !ENV[key].empty? }
+      missing = REQUIRED.reject do |key|
+        value = ENV.fetch(key, nil)
+        value && !value.empty?
+      end
       raise ConfigError, "Configuración inválida o incompleta: #{missing.join(', ')}" unless missing.empty?
 
       broker_url = ENV.fetch('BROKER_URL')
@@ -55,8 +62,17 @@ module Infrastructure
       )
     end
 
+    def self.load_file_backed_values
+      %w[DB_PASSWORD BROKER_URL].each do |key|
+        value = ENV.fetch(key, nil)
+        next if value && !value.empty?
+        path = ENV.fetch("#{key}_FILE", nil)
+        ENV.store(key, File.read(path).strip) if path && !path.empty?
+      end
+    end
+
     def self.env_int(key, fallback)
-      value = ENV[key]
+      value = ENV.fetch(key, nil)
       return fallback if value.nil? || value.empty?
 
       Integer(value)

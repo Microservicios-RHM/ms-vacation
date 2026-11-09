@@ -4,6 +4,7 @@ require 'date'
 require_relative 'response_helpers'
 require_relative '../../domain/errors'
 require_relative '../../domain/error_codes'
+require_relative '../observability'
 
 module Infrastructure
   module Http
@@ -17,22 +18,41 @@ module Infrastructure
       # Nombrado distinto a "build": Sinatra::Base ya define un class method .build (interno,
       # arma la pila de middleware Rack) y un nombre igual lo sobreescribe silenciosamente.
       def self.configure_app(schedule_vacation:, get_vacation:, list_vacations:, cancel_vacation:,
-                             force_vacation_transition:, logger:)
+                             force_vacation_transition:, logger:, health_check:)
         set :schedule_vacation, schedule_vacation
         set :get_vacation, get_vacation
         set :list_vacations, list_vacations
         set :cancel_vacation, cancel_vacation
         set :force_vacation_transition, force_vacation_transition
         set :app_logger, logger
+        # Sinatra evalÃºa Proc al asignarlo como setting; el array conserva el callback para cada request.
+        set :health_check_callbacks, [health_check]
         self
       end
 
       before do
         content_type :json
+        @request_started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      end
+
+      after do
+        unless request.path == '/metrics'
+          duration = Process.clock_gettime(Process::CLOCK_MONOTONIC) - @request_started_at
+          Infrastructure::Observability.observe_http(request.request_method, response.status, duration)
+          settings.app_logger&.info('HTTP request completed', method: request.request_method, path: request.path, status: response.status, durationMs: (duration * 1000).round(2))
+        end
       end
 
       get '/health' do
-        success_body('Servicio disponible', { status: 'UP' })
+        checks = settings.health_check_callbacks.first.call
+        status_value = checks.values.all? { |value| value == 'UP' } ? 'UP' : 'DOWN'
+        status(status_value == 'UP' ? 200 : 503)
+        JSON.generate(success: status_value == 'UP', status: status_value, service: 'vacaciones-service', checks: checks, data: { status: status_value })
+      end
+
+      get '/metrics' do
+        content_type 'text/plain; version=0.0.4; charset=utf-8'
+        Infrastructure::Observability.metrics
       end
 
       # Montadas bajo /vacaciones (no en la raíz) para poder vivir detrás del API Gateway sin

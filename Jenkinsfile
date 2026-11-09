@@ -16,6 +16,9 @@
 
 pipeline {
   agent any
+  parameters {
+    booleanParam(name: 'RUN_E2E', defaultValue: false, description: 'Ejecutar pruebas E2E completas')
+  }
 
   options {
     skipDefaultCheckout()
@@ -43,12 +46,19 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
+        deleteDir()
         checkout scm
         script {
           env.GIT_SHORT = sh(script: 'git rev-parse --short=7 HEAD', returnStdout: true).trim()
           env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT}"
         }
         sh 'git log -1 --format="Commit %h — %s (%an)"'
+      }
+    }
+
+    stage('Secret scan') {
+      steps {
+        sh 'docker run --rm --volumes-from "$HOSTNAME" zricethezav/gitleaks:v8.24.2 detect --source="$PWD" --no-git --redact --exit-code=1'
       }
     }
 
@@ -86,6 +96,7 @@ pipeline {
       }
       environment {
         HOME = '/tmp'
+        POSTGRES_TEST_HOST = 'host.docker.internal'
       }
       steps {
         // Unitarias + integración, con reportes JUnit XML y Cobertura XML (Reto 6, ver .rspec y
@@ -112,6 +123,17 @@ pipeline {
             alwaysLinkToLastBuild: true,
             allowMissing         : true
           ])
+        }
+      }
+    }
+
+    stage('Dependency scan') {
+      steps {
+        sh 'mkdir -p reports/security; docker run --rm --volumes-from "$HOSTNAME" -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 fs --scanners vuln --severity HIGH,CRITICAL --exit-code 0 --format json --output "$PWD/reports/security/dependencies.json" "$PWD"; docker run --rm --volumes-from "$HOSTNAME" -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 fs --scanners vuln --severity CRITICAL --ignore-unfixed --exit-code 1 --no-progress "$PWD"'
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'reports/security/dependencies.json', allowEmptyArchive: false
         }
       }
     }
@@ -146,8 +168,19 @@ pipeline {
       steps {
         // Dockerfile multi-stage: instala las gemas (sin el grupo test) con la toolchain en una etapa
         // y copia solo el bundle resultante a la imagen final, sin compiladores.
-        sh 'docker build --pull=false -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:latest" .'
+        sh 'docker build --pull -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:latest" .'
         sh 'docker image inspect "$IMAGE:$IMAGE_TAG" --format "Imagen construida: {{index .RepoTags 0}} ({{.Size}} bytes)"'
+      }
+    }
+
+    stage('Image scan') {
+      steps {
+        sh 'docker run --rm --volumes-from "$HOSTNAME" -v /var/run/docker.sock:/var/run/docker.sock -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 image --scanners vuln --severity HIGH,CRITICAL --exit-code 0 --format json --output "$PWD/reports/security/image.json" "$IMAGE:$IMAGE_TAG"; docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 image --scanners vuln --severity CRITICAL --ignore-unfixed --exit-code 1 --no-progress "$IMAGE:$IMAGE_TAG"'
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'reports/security/image.json', allowEmptyArchive: false
+        }
       }
     }
 
@@ -164,6 +197,10 @@ pipeline {
     }
 
     stage('E2E Tests') {
+      when { expression { params.RUN_E2E } }
+      options {
+        lock(resource: 'rhm-e2e-stack', inversePrecedence: true)
+      }
       environment {
         // Proyecto Compose propio del job: contenedores, red y volúmenes aislados del stack de
         // desarrollo y del E2E de otros servicios (ver ci/docker-compose.e2e.yml).
@@ -183,7 +220,8 @@ pipeline {
             }
             repo="$RHM_GIT_BASE_URL/rhm-database-infrastructure.git"
             git clone --quiet --depth 1 $(branch_or_default "$repo") "$repo" rhm-database-infrastructure
-            sh rhm-database-infrastructure/ci/checkout-stack.sh
+    sh rhm-database-infrastructure/ci/checkout-stack.sh
+    sh rhm-database-infrastructure/ci/provision-e2e-secret-volume.sh
           '''
           // El servicio bajo prueba no se reconstruye desde el código: se usa la imagen de Package.
           writeFile file: 'service-under-test.yml', text: """\

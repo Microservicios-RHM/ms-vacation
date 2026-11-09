@@ -1,5 +1,6 @@
 require 'json'
 require_relative 'envelope'
+require_relative '../observability'
 
 module Infrastructure
   module Messaging
@@ -24,8 +25,8 @@ module Infrastructure
         queue = channel.queue(@queue_name, durable: true)
         @handlers.each_key { |routing_key| queue.bind(exchange, routing_key: routing_key) }
 
-        queue.subscribe(manual_ack: true, block: false) do |delivery_info, _properties, body|
-          dispatch(channel, delivery_info, body)
+        queue.subscribe(manual_ack: true, block: false) do |delivery_info, properties, body|
+          dispatch(channel, delivery_info, properties, body)
         end
 
         @logger.info(
@@ -51,10 +52,20 @@ module Infrastructure
 
       private
 
-      def dispatch(channel, delivery_info, body)
-        route(delivery_info.routing_key, body)
-        channel.ack(delivery_info.delivery_tag)
+      def dispatch(channel, delivery_info, properties, body)
+        headers = properties.headers || {}
+        parent = OpenTelemetry.propagation.extract(headers)
+        OpenTelemetry::Context.with_current(parent) do
+          OpenTelemetry.tracer_provider.tracer('vacaciones-service').in_span(
+            "consume #{delivery_info.routing_key}", kind: :consumer
+          ) do
+            route(delivery_info.routing_key, body)
+            Infrastructure::Observability.observe_event(delivery_info.routing_key, 'processed')
+            channel.ack(delivery_info.delivery_tag)
+          end
+        end
       rescue StandardError => e
+        Infrastructure::Observability.observe_event(delivery_info.routing_key, 'failed')
         @logger.error('event discarded', routingKey: delivery_info.routing_key, error: e.message)
         channel.nack(delivery_info.delivery_tag, false, false)
       end

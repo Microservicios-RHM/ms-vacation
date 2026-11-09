@@ -9,6 +9,9 @@ gem 'pg', '~> 1.5'
 gem 'bunny', '~> 2.23'
 gem 'connection_pool', '~> 2.4'
 gem 'dotenv', '~> 3.1'
+gem 'opentelemetry-sdk', '~> 1.8'
+gem 'opentelemetry-exporter-otlp', '~> 0.31'
+gem 'opentelemetry-instrumentation-all', '~> 0.81'
 
 group :test do
   gem 'rspec', '~> 3.13'

@@ -1,5 +1,6 @@
 require_relative 'infrastructure/config'
 require_relative 'infrastructure/logging'
+require_relative 'infrastructure/observability'
 require_relative 'infrastructure/persistence/database'
 require_relative 'infrastructure/persistence/migrations'
 require_relative 'infrastructure/persistence/vacation_repository'
@@ -24,6 +25,7 @@ require_relative 'application/force_vacation_transition'
 module Bootstrap
   def self.build
     settings = Infrastructure::Config.load
+    Infrastructure::Observability.configure_tracing
     logger = Infrastructure::Logger.new(level: settings.log_level)
 
     logger.info('Connecting to PostgreSQL', host: settings.db_host, database: settings.db_name)
@@ -102,7 +104,16 @@ module Bootstrap
       list_vacations: list_vacations,
       cancel_vacation: cancel_vacation,
       force_vacation_transition: force_vacation_transition,
-      logger: logger
+      logger: logger,
+      health_check: lambda {
+        database = begin
+          pool.with { |connection| connection.exec('SELECT 1') }
+          'UP'
+        rescue StandardError
+          'DOWN'
+        end
+        { database: database, broker: connection.healthy? ? 'UP' : 'DOWN' }
+      }
     )
   end
 end
