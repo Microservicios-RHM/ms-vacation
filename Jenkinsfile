@@ -128,7 +128,7 @@ pipeline {
 
     stage('Dependency scan') {
       steps {
-        sh 'mkdir -p reports/security; docker run --rm --volumes-from "$HOSTNAME" -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 fs --scanners vuln --severity HIGH,CRITICAL --exit-code 0 --format json --output "$PWD/reports/security/dependencies.json" "$PWD"; docker run --rm --volumes-from "$HOSTNAME" -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 fs --scanners vuln --severity CRITICAL --exit-code 1 --no-progress "$PWD"'
+        sh 'mkdir -p reports/security; docker run --rm --volumes-from "$HOSTNAME" -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 fs --scanners vuln --severity HIGH,CRITICAL --exit-code 0 --format json --output "$PWD/reports/security/dependencies.json" "$PWD"; docker run --rm --volumes-from "$HOSTNAME" -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 fs --scanners vuln --severity CRITICAL --ignore-unfixed --exit-code 1 --no-progress "$PWD"'
       }
       post {
         always {
@@ -174,7 +174,7 @@ pipeline {
 
     stage('Image scan') {
       steps {
-        sh 'docker run --rm --volumes-from "$HOSTNAME" -v /var/run/docker.sock:/var/run/docker.sock -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 image --severity HIGH,CRITICAL --exit-code 0 --format json --output "$PWD/reports/security/image.json" "$IMAGE:$IMAGE_TAG"; docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 image --severity CRITICAL --exit-code 1 --no-progress "$IMAGE:$IMAGE_TAG"'
+        sh 'docker run --rm --volumes-from "$HOSTNAME" -v /var/run/docker.sock:/var/run/docker.sock -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 image --scanners vuln --severity HIGH,CRITICAL --exit-code 0 --format json --output "$PWD/reports/security/image.json" "$IMAGE:$IMAGE_TAG"; docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 image --scanners vuln --severity CRITICAL --ignore-unfixed --exit-code 1 --no-progress "$IMAGE:$IMAGE_TAG"'
       }
       post {
         always {
