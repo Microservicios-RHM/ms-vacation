@@ -122,13 +122,13 @@ pipeline {
 
     stage('Secret scan') {
       steps {
-        sh 'docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.24.2 detect --source=/repo --no-git --redact --exit-code=1'
+        sh 'docker run --rm --volumes-from "$HOSTNAME" zricethezav/gitleaks:v8.24.2 detect --source="$PWD" --no-git --redact --exit-code=1'
       }
     }
 
     stage('Dependency scan') {
       steps {
-        sh 'mkdir -p reports/security; docker run --rm -v "$PWD:/src" aquasec/trivy:0.76.2 fs --scanners vuln --severity HIGH,CRITICAL --exit-code 0 --format json --output /src/reports/security/dependencies.json /src; docker run --rm -v "$PWD:/src" aquasec/trivy:0.76.2 fs --scanners vuln --severity CRITICAL --exit-code 1 --no-progress /src'
+        sh 'mkdir -p reports/security; docker run --rm --volumes-from "$HOSTNAME" -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 fs --scanners vuln --severity HIGH,CRITICAL --exit-code 0 --format json --output "$PWD/reports/security/dependencies.json" "$PWD"; docker run --rm --volumes-from "$HOSTNAME" -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 fs --scanners vuln --severity CRITICAL --exit-code 1 --no-progress "$PWD"'
       }
       post {
         always {
@@ -174,7 +174,7 @@ pipeline {
 
     stage('Image scan') {
       steps {
-        sh 'docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src" aquasec/trivy:0.76.2 image --severity HIGH,CRITICAL --exit-code 0 --format json --output /src/reports/security/image.json "$IMAGE:$IMAGE_TAG"; docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.76.2 image --severity CRITICAL --exit-code 1 --no-progress "$IMAGE:$IMAGE_TAG"'
+        sh 'docker run --rm --volumes-from "$HOSTNAME" -v /var/run/docker.sock:/var/run/docker.sock -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 image --severity HIGH,CRITICAL --exit-code 0 --format json --output "$PWD/reports/security/image.json" "$IMAGE:$IMAGE_TAG"; docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "trivy-cache-$SERVICE:/root/.cache/trivy" aquasec/trivy:0.76.2 image --severity CRITICAL --exit-code 1 --no-progress "$IMAGE:$IMAGE_TAG"'
       }
       post {
         always {
