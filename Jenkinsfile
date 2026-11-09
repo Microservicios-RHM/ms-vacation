@@ -120,6 +120,23 @@ pipeline {
       }
     }
 
+    stage('Secret scan') {
+      steps {
+        sh 'docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.24.2 detect --source=/repo --no-git --redact --exit-code=1'
+      }
+    }
+
+    stage('Dependency scan') {
+      steps {
+        sh 'mkdir -p reports/security; docker run --rm -v "$PWD:/src" aquasec/trivy:0.76.2 fs --scanners vuln --severity HIGH,CRITICAL --exit-code 0 --format json --output /src/reports/security/dependencies.json /src; docker run --rm -v "$PWD:/src" aquasec/trivy:0.76.2 fs --scanners vuln --severity CRITICAL --exit-code 1 --no-progress /src'
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'reports/security/dependencies.json', allowEmptyArchive: false
+        }
+      }
+    }
+
     stage('SonarQube') {
       agent {
         docker {
@@ -152,6 +169,17 @@ pipeline {
         // y copia solo el bundle resultante a la imagen final, sin compiladores.
         sh 'docker build --pull=false -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:latest" .'
         sh 'docker image inspect "$IMAGE:$IMAGE_TAG" --format "Imagen construida: {{index .RepoTags 0}} ({{.Size}} bytes)"'
+      }
+    }
+
+    stage('Image scan') {
+      steps {
+        sh 'docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src" aquasec/trivy:0.76.2 image --severity HIGH,CRITICAL --exit-code 0 --format json --output /src/reports/security/image.json "$IMAGE:$IMAGE_TAG"; docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.76.2 image --severity CRITICAL --exit-code 1 --no-progress "$IMAGE:$IMAGE_TAG"'
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'reports/security/image.json', allowEmptyArchive: false
+        }
       }
     }
 
