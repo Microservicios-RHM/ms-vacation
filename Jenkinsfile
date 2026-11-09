@@ -198,6 +198,9 @@ pipeline {
 
     stage('E2E Tests') {
       when { expression { params.RUN_E2E } }
+      options {
+        lock(resource: 'rhm-e2e-stack', inversePrecedence: true)
+      }
       environment {
         // Proyecto Compose propio del job: contenedores, red y volúmenes aislados del stack de
         // desarrollo y del E2E de otros servicios (ver ci/docker-compose.e2e.yml).
