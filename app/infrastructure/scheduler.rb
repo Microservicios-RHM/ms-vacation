@@ -1,3 +1,5 @@
+require 'opentelemetry/common'
+
 module Infrastructure
   # Equivalente a @Scheduled de Spring o node-cron: un hilo que despierta cada intervalo y ejecuta
   # la tarea. Ruby no necesita una gema para esto, y el Gemfile se mantiene mínimo.
@@ -34,8 +36,12 @@ module Infrastructure
 
     # Un fallo en una pasada no puede matar el hilo: si lo hiciera, el servicio seguiría vivo y
     # sano para Docker, pero ningún período volvería a transicionar en toda la vida del contenedor.
+    #
+    # untraced (Reto 8): las consultas de cada pasada (start_due/finish_due) corren cada minuto
+    # aunque no haya nada que transicionar, y crearían una traza suelta por consulta. Solo se
+    # trazan las transiciones reales, cada una con su propio span raíz (TransitionTracing).
     def run_once
-      @task.call
+      OpenTelemetry::Common::Utilities.untraced { @task.call }
     rescue StandardError => e
       @logger.error('Vacation scheduler run failed', error: e.message)
     end

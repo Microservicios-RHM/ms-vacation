@@ -65,11 +65,22 @@ module Infrastructure
       }.freeze
 
       def self.call(event_type, period, &block)
-        OpenTelemetry.tracer_provider.tracer('rhm-scheduler').in_span(
-          SPAN_NAMES.fetch(event_type, "scheduler.#{event_type}"),
-          attributes: { 'vacaciones.id' => period.id.to_s, 'empleado.id' => period.empleado_id.to_s },
-          &block
-        )
+        OpenTelemetry::Context.with_current(parent_context) do
+          OpenTelemetry.tracer_provider.tracer('rhm-scheduler').in_span(
+            SPAN_NAMES.fetch(event_type, "scheduler.#{event_type}"),
+            attributes: { 'vacaciones.id' => period.id.to_s, 'empleado.id' => period.empleado_id.to_s },
+            &block
+          )
+        end
+      end
+
+      # La pasada del scheduler corre sin trazas (ver Scheduler#run_once); la transición sí se
+      # traza, así que parte de un contexto vacío y su span es la raíz. Si la fuerza un POST HTTP,
+      # cuelga de esa petición.
+      def self.parent_context
+        return OpenTelemetry::Context.empty if OpenTelemetry::Common::Utilities.untraced?
+
+        OpenTelemetry::Context.current
       end
     end
 

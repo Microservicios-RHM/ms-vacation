@@ -11,6 +11,7 @@ require_relative '../../app/infrastructure/messaging/consumer'
 require_relative '../../app/infrastructure/messaging/publisher'
 require_relative '../../app/application/advance_vacation_periods'
 require_relative '../../app/infrastructure/logging'
+require_relative '../../app/infrastructure/scheduler'
 require_relative '../support/fake_vacation_repository'
 require_relative '../support/fake_publisher'
 
@@ -165,6 +166,29 @@ RSpec.describe 'Observabilidad (Reto 8)' do
 
       publishes = EXPORTER.finished_spans.select { |span| span.name == 'vacaciones.iniciadas publish' }
       expect(publishes.map(&:hex_trace_id)).to match_array(roots.map(&:hex_trace_id))
+    end
+
+    it 'desde el scheduler solo traza las transiciones, no las consultas de cada pasada' do
+      vacation_repository.save(
+        Domain::VacationPeriod.new(
+          id: 'V-2026-0009', empleado_id: 'E001', fecha_inicio: '2026-06-10', fecha_fin: '2026-06-20', estado: 'PROGRAMADA'
+        )
+      )
+      use_case = Application::AdvanceVacationPeriods.new(
+        vacation_repository: vacation_repository, publisher: publisher, logger: logger,
+        transition_tracing: Infrastructure::Observability::TransitionTracing
+      )
+      scheduler = Infrastructure::Scheduler.new(interval_seconds: 60, logger: logger) do
+        OpenTelemetry.tracer_provider.tracer('test').in_span('consulta de la pasada') { nil }
+        use_case.call('2026-06-15')
+      end
+      scheduler.send(:run_once)
+
+      names = EXPORTER.finished_spans.map(&:name)
+      expect(names).not_to include('consulta de la pasada')
+      root = EXPORTER.finished_spans.find { |span| span.name == 'scheduler.vacaciones.iniciar' }
+      expect(root.parent_span_id).to eq(OpenTelemetry::Trace::INVALID_SPAN_ID)
+      expect(names).to include('vacaciones.iniciadas publish')
     end
   end
 

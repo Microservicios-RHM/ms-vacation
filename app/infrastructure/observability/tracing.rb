@@ -38,7 +38,9 @@ module Infrastructure
           )
           # El healthcheck de Docker y el scraping de Prometheus taparían en Zipkin las trazas
           # de negocio.
-          config.use 'OpenTelemetry::Instrumentation::Rack', untraced_endpoints: UNTRACED_ENDPOINTS
+          # .dup: la gema modifica la lista (compact!) al instalarse; con el arreglo congelado la
+          # instalación fallaba en silencio y /health se trazaba igual.
+          config.use 'OpenTelemetry::Instrumentation::Rack', untraced_endpoints: UNTRACED_ENDPOINTS.dup
           config.use 'OpenTelemetry::Instrumentation::Sinatra'
           config.use 'OpenTelemetry::Instrumentation::PG'
         end
