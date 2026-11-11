@@ -44,13 +44,13 @@ RSpec.describe Infrastructure::Http::App do
 
   before { employee_registry.mark_valid_if_new('seed-event', 'E001') }
 
-  it 'GET /health responde 200 con el envelope del ecosistema' do
+  it 'GET /health responde 200 con el estado de cada dependencia (Reto 8)' do
     get '/health'
 
     expect(last_response.status).to eq(200)
-    body = JSON.parse(last_response.body)
-    expect(body['success']).to be(true)
-    expect(body['data']).to eq('status' => 'UP')
+    expect(JSON.parse(last_response.body)).to eq(
+      'status' => 'UP', 'service' => 'vacaciones-service', 'checks' => {}
+    )
   end
 
   it 'POST /vacaciones programa un período y responde 201 en camelCase' do

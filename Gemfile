@@ -10,6 +10,14 @@ gem 'bunny', '~> 2.23'
 gem 'connection_pool', '~> 2.4'
 gem 'dotenv', '~> 3.1'
 
+# Reto 8: observabilidad (métricas Prometheus + trazas OpenTelemetry hacia Zipkin).
+gem 'prometheus-client', '~> 5.0'
+gem 'opentelemetry-sdk', '~> 1.13'
+gem 'opentelemetry-exporter-zipkin', '~> 0.26'
+gem 'opentelemetry-instrumentation-rack', '~> 0.31'
+gem 'opentelemetry-instrumentation-sinatra', '~> 0.30'
+gem 'opentelemetry-instrumentation-pg', '~> 0.37'
+
 group :test do
   gem 'rspec', '~> 3.13'
   gem 'rack-test', '~> 2.1'

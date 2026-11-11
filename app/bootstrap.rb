@@ -9,6 +9,8 @@ require_relative 'infrastructure/messaging/consumer'
 require_relative 'infrastructure/messaging/publisher'
 require_relative 'infrastructure/http/app'
 require_relative 'infrastructure/scheduler'
+require_relative 'infrastructure/observability/tracing'
+require_relative 'infrastructure/observability/message_tracing'
 require_relative 'application/schedule_vacation'
 require_relative 'application/get_vacation'
 require_relative 'application/list_vacations'
@@ -25,6 +27,8 @@ module Bootstrap
   def self.build
     settings = Infrastructure::Config.load
     logger = Infrastructure::Logger.new(level: settings.log_level)
+    # Reto 8: OpenTelemetry antes de abrir conexiones, para que pg quede instrumentado.
+    logger.info('OpenTelemetry tracing enabled', exporter: 'zipkin') if Infrastructure::Observability::Tracing.configure!
 
     logger.info('Connecting to PostgreSQL', host: settings.db_host, database: settings.db_name)
     pool = Infrastructure::Persistence::Database.connect(settings, logger)
@@ -80,7 +84,8 @@ module Bootstrap
     cancel_vacation = Application::CancelVacation.new(vacation_repository: vacation_repository)
 
     advance_vacation_periods = Application::AdvanceVacationPeriods.new(
-      vacation_repository: vacation_repository, publisher: publisher, logger: logger
+      vacation_repository: vacation_repository, publisher: publisher, logger: logger,
+      transition_tracing: Infrastructure::Observability::TransitionTracing
     )
     force_vacation_transition = Application::ForceVacationTransition.new(
       vacation_repository: vacation_repository, advance_vacation_periods: advance_vacation_periods
@@ -102,7 +107,11 @@ module Bootstrap
       list_vacations: list_vacations,
       cancel_vacation: cancel_vacation,
       force_vacation_transition: force_vacation_transition,
-      logger: logger
+      logger: logger,
+      health_checks: {
+        database: -> { pool.with { |conn| conn.exec('SELECT 1') } && true },
+        messageBroker: -> { connection.open? },
+      }
     )
   end
 end

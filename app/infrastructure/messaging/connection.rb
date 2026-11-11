@@ -31,6 +31,11 @@ module Infrastructure
         raise "No fue posible conectar a RabbitMQ: #{last_error&.message}"
       end
 
+      # Reto 8: usado por GET /health (check messageBroker).
+      def open?
+        @connection&.open? ? true : false
+      end
+
       def create_channel
         @connection.create_channel
       end

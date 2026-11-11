@@ -3,7 +3,9 @@
 # de integración levantan su propio PostgreSQL con `docker run` (spec/support/postgres_container.rb).
 FROM ruby:3.4-alpine
 
-RUN apk add --no-cache build-base postgresql-dev
+# libpq-dev basta para compilar la gema pg; postgresql-dev arrastra además LLVM y Clang (JIT del
+# servidor PostgreSQL): ~430 MB extra que esta imagen nunca usa.
+RUN apk add --no-cache build-base libpq-dev
 
 COPY --from=docker:29-cli /usr/local/bin/docker /usr/local/bin/docker
 
